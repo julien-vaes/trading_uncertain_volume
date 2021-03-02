@@ -1,0 +1,425 @@
+# NAME: ne_help_functions.jl
+# AUTHOR: Julien Vaes
+# DATE: November 24, 2020
+# DESCRIPTION: functions to help the notebook for the NE.
+
+module NEHelpFunctionsModule
+
+###################
+## Load Packages ##
+###################
+
+using Plots
+using Statistics
+using Random
+using LinearAlgebra
+using LaTeXStrings
+using Distributions
+
+############################
+## Load Personal Packages ##
+############################
+
+using ..UncertaintyStructureModule
+using ..MarketDetailsModule
+using ..TraderModule
+using ..StrategyModule
+using ..SimulationParametersModule
+using ..HelpFilesModule
+
+######################
+## Export functions ##
+######################
+
+export get_matrices_for_risk_set
+export check_sufficient_condition_uniqueness_NE_risk_averse_case
+export get_traders
+export get_market_details_performance
+export get_initial_strategies
+
+######################
+## Module variables ##
+######################
+
+####################
+# Module functions #
+####################
+
+function get_matrices_for_risk_set(;aτ,aγ,aη)
+
+	myNPeriods = size(aγ,1)
+
+	# matrix Eb
+	myEb = diagm(aη[1:end-1]./(aτ[1:end-1]))
+
+	# matrix Eb_m
+	myEb_m = (aη[end]/aτ[end])*ones(myNPeriods-1,myNPeriods-1)
+
+	# matrices Γ and Λ
+	myΓb = zeros(myNPeriods-1,myNPeriods-1)
+	myΛb = zeros(myNPeriods-1,myNPeriods-1)
+
+	for i = 1:myNPeriods-1, j = 1:myNPeriods-1
+		if i == j
+			myΓb[i,j] = 2*aγ[i]
+			myΛb[i,j] = aγ[i]
+		elseif i < j
+			myΓb[i,j] = aγ[j]
+			myΛb[i,j] = aγ[j]
+		elseif i > j
+			myΓb[i,j] = aγ[i]
+		end
+	end
+
+	# matrix \tilde{Mb} or interior of matrix Gb_eq
+	myInnerGb_eq                                = zeros(2*(myNPeriods-1),2*(myNPeriods-1))
+	myInnerGb_eq[1:myNPeriods-1,1:myNPeriods-1] = 2*myEb + 2*myEb_m - myΓb
+	myInnerGb_eq[myNPeriods:end,myNPeriods:end] = 2*myEb + 2*myEb_m - myΓb
+	myInnerGb_eq[1:myNPeriods-1,myNPeriods:end] = -(2*myEb_m - myΓb)
+	myInnerGb_eq[myNPeriods:end,1:myNPeriods-1] = -(2*myEb_m - myΓb)
+
+	# matrix Gb_eq
+	myGb_eq                        = zeros(2*myNPeriods-1,2*myNPeriods-1)
+	myGb_eq[1:end-1,1:end-1]       = myInnerGb_eq
+	myGb_eq[1:myNPeriods-1,end]   .= -2*(aη[end]/aτ[end])
+	myGb_eq[myNPeriods:end-1,end] .=  2*(aη[end]/aτ[end])
+	myGb_eq[end,1:myNPeriods-1]   .= -2*(aη[end]/aτ[end])
+	myGb_eq[end,myNPeriods:end-1] .=  2*(aη[end]/aτ[end])
+	myGb_eq[end,end]               =  4*(aη[end]/aτ[end])
+
+	# interior of matrix Gb_neq
+	myInnerGb_neq                                = zeros(2*(myNPeriods-1),2*(myNPeriods-1))
+	myInnerGb_neq[1:myNPeriods-1,1:myNPeriods-1] = myEb + myEb_m - myΛb
+	myInnerGb_neq[myNPeriods:end,myNPeriods:end] = myEb + myEb_m - myΛb
+	myInnerGb_neq[1:myNPeriods-1,myNPeriods:end] = -(myEb_m - myΛb)
+	myInnerGb_neq[myNPeriods:end,1:myNPeriods-1] = -(myEb_m - myΛb)
+
+	# matrix Gb_neq
+	myGb_neq                        = zeros(2*myNPeriods-1,2*myNPeriods-1)
+	myGb_neq[1:end-1,1:end-1]       = myInnerGb_neq
+	myGb_neq[1:myNPeriods-1,end]   .= -(aη[end]/aτ[end])
+	myGb_neq[myNPeriods:end-1,end] .=  (aη[end]/aτ[end])
+	myGb_neq[end,1:myNPeriods-1]   .= -(aη[end]/aτ[end])
+	myGb_neq[end,myNPeriods:end-1] .=  (aη[end]/aτ[end])
+	myGb_neq[end,end]               =  2*(aη[end]/aτ[end])
+
+	return myGb_eq, myGb_neq, myEb, myEb_m, myΓb, myΛb
+end
+
+function check_positive_definiteness_matrix_risk_factors_instance!(;aΔbVertex,aπ,aR,aGb_eq,aGb_neq)
+
+	myNPlayers = size(aπ,1)
+	myNRows    = size(aGb_eq,1)
+	myNCols    = size(aGb_eq,2)
+
+	# fills the matrix Δb
+	for p in 1:myNPlayers, q in 1:myNPlayers
+		aΔbVertex[(p-1)*myNRows+1:p*myNRows,(q-1)*myNCols+1:q*myNCols] = p == q ? 2*aR[p]*aπ[p]*aGb_eq : aR[p]*aπ[p]*aGb_neq + aR[q]*aπ[q]*aGb_neq'
+	end
+
+	#= if minimum(eigvals(aΔbVertex)) < - 10^-18 =#
+	#= 	println("The minimum eigenvalue of the matrix is: ", minimum(eigvals(aΔbVertex))) =#
+	#= 	println("The maximum eigenvalue of the matrix is: ", maximum(eigvals(aΔbVertex))) =#
+	#= 	println("Eigenvalues of the matrix: ", eigvals(aΔbVertex)) =#
+	#= end =#
+
+	return minimum(eigvals(aΔbVertex)) > - 10^-18
+end
+
+function check_sufficient_condition_uniqueness_NE_risk_averse_case(;aτ,aγ,aη,aα,aλ,aR)
+
+	myNTraders = size(aλ,1)
+	myNTradingPeriods = size(aγ,1)
+
+	# gets the matrices usefull to build the matrices induced by the vertices of the risk factors set
+	myGb_eq, myGb_neq, myEb, myEb_m, myΓb, myΛb = get_matrices_for_risk_set(aγ = aγ, aη = aη, aτ = aτ)
+
+	# initialises the variables that will contain the vertex and the associated risk factors matrix such that it is not allocated at every iteration
+	myVertexRiskFactorsSet = zeros(myNTraders)
+	myΔbVertex = zeros(myNTraders.*size(myGb_eq))
+
+	for i in 1:2^myNTraders
+
+		# gets for every players if π must be pushed either to the lower or upper bound to get the vertex
+		myNumberInBinary = digits(i-1, base = 2, pad = myNTraders)
+
+		# gets the vertex π^ext of the risk factors set Π(λ,α)
+		for p in 1:myNTraders
+			myVertexRiskFactorsSet[p] = myNumberInBinary[p] == 1 ? (1-aλ[p]) : (1-aλ[p]) + (aλ[p]/aα[p])
+		end
+
+		# any matrix generated by a vertex Δ(r,π) generated by a vertex π of the risk factors set Π(λ,α) must be positive definite, if not then the condition does not hold
+		if !(check_positive_definiteness_matrix_risk_factors_instance!(aΔbVertex = myΔbVertex, aπ = myVertexRiskFactorsSet, aR = aR, aGb_eq = myGb_eq, aGb_neq = myGb_neq))
+			return false
+		end
+	end
+
+	return true
+end
+
+#= function check_sufficient_condition_risk_averse_uniqueness_NE_old(aNTraders,aγ,aη,aτ,aα,aλ,aR,aNTests) =#
+
+#=     myUniqueNE = true =#
+#=     myNTraders = aNTraders =#
+
+#=     myλ= aλ[1:myNTraders] =#
+#=     myγ= aγ =#
+#=     myη= aη[1:myNTraders] =#
+#=     myτ= aτ[1:myNTraders] =#
+#=     myα= aα[1:myNTraders] =#
+#=     myR= aR[1:myNTraders] =#
+
+#=     for t in 1:aNTests =#
+
+#=         myRandomNumbers = rand(myNTraders) =#
+#=         myΠTilde = (ones(myNTraders)-myλ) + myRandomNumbers.*(myλ./(ones(myNTraders)-myα)) =#
+
+#=         mySumRxΠTilde = sum(myR[p]*myΠTilde[p] for p in 1:myNTraders) =#
+#=         mySumRxΠTildeSquared = sum((myR[p]*myΠTilde[p])^2 for p in 1:myNTraders) =#
+
+#=         # checks Condition of Eq (51) =#
+#=         for p in 1:myNTraders, i in 1:size(myη,1) =#
+#=             myValueCondition  = 2*myR[p]*myΠTilde[p]*(myη[i]-2*myγ*myτ[i]) =# 
+#=             myValueCondition += (mySumRxΠTilde - sqrt(myNTraders)*sqrt(mySumRxΠTildeSquared))*myη[i] =#
+#=             if myValueCondition <= 0 =#
+#=                 myUniqueNE = false =#
+#=                 break =#
+#=             end =#
+#=         end =#
+#=         if !(myUniqueNE) =#
+#=             break =#
+#=         end =#
+#=     end =#
+
+#=     return myUniqueNE =#
+#= end =#
+
+###############
+### Traders ###
+###############
+
+"""
+```
+get_traders(;aNTraders, aNTradingPeriods, aRiskAversions, aAlphas, aPricesShiftsMean, aPricesShiftsStd, aConsiderPriceMoves, aInitialDemandForecasts, aForecastUpdatesStd, aConsiderForecastUpdates, aTaus, aGammas, aEtas, aEpsilons)
+```
+
+TODO function description.
+
+### Arguments
+* `aNTraders`: the number of traders.
+* `aNTradingPeriods`: the number of trading periods.
+* `aRiskAversions`: the risk-aversion parameter of each player.
+* `aAlphas`: the CVaR risk-level parameter of each player, i.e. α in CVaR_α.
+* `aPricesShiftsMean::Array{Float64,2}`: the matrix of size aNTraders x aNTradingPeriods, for which element [p,i] is the mean of the price shift of the i-th trading period (τ_i) estimated by player p.
+* `aPricesShiftsStd::Array{Float64,2}`: the matrix of size aNTraders x aNTradingPeriods, for which element [p,i] is the standard deviation of the price shift of the i-th trading period (τ_i) estimated by player p.
+* `aConsiderPriceMoves::Array{Bool,2}`: the matrix of size aNTraders x aNTraders, for which element [p,q] = 1 if player p assumes that player q considers the uncertainty on price while defining their strategy, and = 0 otherwise.
+* `aInitialDemandForecasts::Array{Float64,2}`: the matrix of size aNTraders x aNTraders, for which element [p,q] is the estimate that player p has on the final volume target of player q at time t0.
+* `aForecastUpdatesStd`: the matrix of size aNTraders x aNTraders x aNTradingPeriods, for which element [p,q,i] is the estimate that player p has on the standard deviation of the final volume target update of player q occuring at trading period τ_i (i-th trading period).
+* `aConsiderForecastUpdates`: the matrix of size aNTraders x aNTraders, for which element [p,q] = 1 if player p assumes that player q considers the uncertainty on the volume target while defining their strategy, and = 0 otherwise.
+* `aTaus`: an array with the length of each trading period.
+* `aGammas`: an array with the value of the linear permanent impact parameter γ for each trading period.
+* `aEpsilons`: an array with the value of the fixed temporary impact parameter ϵ for each trading period, i.e. half the bid-ask spread + fixed trading cost for each trading period.
+* `aEtas`: an array with the value of the linear temporary impact parameter η for each trading period.
+"""
+function get_traders(;
+		     aNTraders,
+		     aNTradingPeriods,
+		     aRiskAversions,
+		     aAlphas,
+		     aPricesShiftsMean,
+		     aPricesShiftsStd,
+		     aConsiderPriceMoves,
+		     aInitialDemandForecasts,
+		     aForecastUpdatesStd,
+		     aConsiderForecastUpdates,
+		     aTaus,
+		     aGammas,
+		     aEpsilons,
+		     aEtas
+		     )
+
+	# initialises the traders vector
+	myTraders = Array{Trader}(undef,aNTraders)
+
+	# for each player, we will construct the believe they have on the other players
+	for myTraderIndex in 1:aNTraders
+
+		# price shifts distribution estimated by player `myTraderIndex` 
+		myPriceMovesDistributionsEstimatedByTraderIndex = [Distributions.Normal(aPricesShiftsMean[myTraderIndex,i],aPricesShiftsStd[myTraderIndex,i]) for i=1:aNTradingPeriods]
+
+		# initialises the vector with the uncertainty structure of each player believed by `myTraderIndex`
+		myOtherTradersUncertaintyStructure = Array{UncertaintyStructure,1}(undef,aNTraders)
+
+		for myOtherTraderIndex in 1:aNTraders
+
+			# the distributions estimated by player `myTraderIndex` and that concern the volume updates at each trading period related to the final demand of player `myOtherTraderIndex`
+			myForecastUpdatesDistributionsOtherPlayerEstimatedByTraderIndex = [Distributions.Normal(0.0,aForecastUpdatesStd[myTraderIndex,myOtherTraderIndex,i]) for i=1:aNTradingPeriods]
+
+			# the uncertainty structure of player `myOtherTraderIndex` that is estimated by player `myTraderIndex` according to their knowledge of the market 
+			myMarketDetailsUncertaintyStructureOtherPlayerEstimatedByTraderIndex = UncertaintyStructureModule.get_uncertainty_structure(
+																		    aNTradingPeriods              = aNTradingPeriods,
+																		    aConsiderPriceMoves           = aConsiderPriceMoves[myTraderIndex,myOtherTraderIndex],
+																		    aPricesMovesDistributions     = myPriceMovesDistributionsEstimatedByTraderIndex,
+																		    aConsiderForecastUpdates      = aConsiderForecastUpdates[myTraderIndex,myOtherTraderIndex],
+																		    aInitialDemandForecast        = aInitialDemandForecasts[myTraderIndex,myOtherTraderIndex],
+																		    aForecastUpdatesDistributions = myForecastUpdatesDistributionsOtherPlayerEstimatedByTraderIndex
+																		    )
+
+			myOtherTradersUncertaintyStructure[myOtherTraderIndex] = myMarketDetailsUncertaintyStructureOtherPlayerEstimatedByTraderIndex
+
+		end
+
+		# market details belief of player `myTraderIndex`; we assume that the market parameters τ, γ, ϵ and η are the same for all players.
+		myLocalMarketDetailsBelief = MarketDetailsModule.get_market_details(
+										    aNTradingPeriods              = aNTradingPeriods,
+										    aNTraders                     = aNTraders,
+										    aTaus                         = aTaus,
+										    aGammas                       = aGammas,
+										    aEpsilons                     = aEpsilons,
+										    aEtas                         = aEtas,
+										    aTradersUncertaintyStructure  = myOtherTradersUncertaintyStructure,
+										    )
+
+		# creates the trader structure
+		myLocalTrader = TraderModule.get_trader(
+							aTraderIndex         = myTraderIndex,
+							aRiskAversion        = aRiskAversions[myTraderIndex],
+							aAlpha               = aAlphas[myTraderIndex],
+							aMarketDetailsBelief = myLocalMarketDetailsBelief
+							)
+
+		# adds the trader to the vector of all traders
+		myTraders[myTraderIndex] = myLocalTrader
+	end
+
+	return myTraders
+end
+
+"""
+```
+get_market_details_performance(;aNTraders, aNTradingPeriods, aRiskAversions, aAlphas, aPricesShiftsMean, aPricesShiftsStd, aConsiderPriceMoves, aInitialDemandForecasts, aForecastUpdatesStd, aConsiderForecastUpdates, aTaus, aGammas, aEtas, aEpsilons)
+```
+
+TODO function description.
+
+### Arguments
+* `aNTraders`: the number of traders.
+* `aNTradingPeriods`: the number of trading periods.
+* `aRiskAversions`: the risk-aversion parameter of each player.
+* `aAlphas`: the CVaR risk-level parameter of each player, i.e. α in CVaR_α.
+* `aPricesShiftsMean::Array{Float64,2}`: the matrix of size aNTraders x aNTradingPeriods, for which element [p,i] is the mean of the price shift of the i-th trading period (τ_i) estimated by player p.
+* `aPricesShiftsStd::Array{Float64,2}`: the matrix of size aNTraders x aNTradingPeriods, for which element [p,i] is the standard deviation of the price shift of the i-th trading period (τ_i) estimated by player p.
+* `aConsiderPriceMoves::Array{Bool,1}`: the matrix of size aNTraders, for which element [p] = 1 if player p considers the uncertainty on price while defining their strategy, and = 0 otherwise.
+* `aInitialDemandForecasts::Array{Float64,1}`: the array of size aNTraders, for which element [p] is the final volume target of player p at time t0.
+* `aForecastUpdatesStd`: the matrix of size aNTraders x aNTradingPeriods, for which element [p,i] is the standard deviation of the final volume target update of player p occuring at trading period τ_i (i-th trading period).
+* `aConsiderForecastUpdates`: the array of size aNTraders, for which element [p] = 1 if player p assumes that player q considers the uncertainty on the volume target while defining their strategy, and = 0 otherwise.
+* `aTaus`: an array with the length of each trading period.
+* `aGammas`: an array with the value of the linear permanent impact parameter γ for each trading period.
+* `aEpsilons`: an array with the value of the fixed temporary impact parameter ϵ for each trading period, i.e. half the bid-ask spread + fixed trading cost for each trading period.
+* `aEtas`: an array with the value of the linear temporary impact parameter η for each trading period.
+"""
+function get_market_details_performance(;
+					aNTraders,
+					aNTradingPeriods,
+					aRiskAversions,
+					aAlphas,
+					aConsiderPriceMoves,
+					aPricesShiftsMean,
+					aPricesShiftsStd,
+					aConsiderForecastUpdates,
+					aInitialDemandForecasts,
+					aForecastUpdatesStd,
+					aTaus,
+					aGammas,
+					aEpsilons,
+					aEtas
+					)
+
+	# vector with the uncertainty structure of each player
+	myTradersUncertaintyStructure = Array{UncertaintyStructure,1}(undef,aNTraders)
+
+	for p in 1:aNTraders
+
+		# price shifts distribution estimated by player `p` 
+		myPriceMovesDistributions = [Distributions.Normal(aPricesShiftsMean[i],aPricesShiftsStd[i]) for i=1:aNTradingPeriods]
+
+		# the distributions of the volume updates at each trading period related to the final demand of player `p`
+		myForecastDistributions = [Distributions.Normal(0.0,aForecastUpdatesStd[p,i]) for i=1:aNTradingPeriods]
+
+		# uncertainty structure of player p
+		myMarketDetailsUncertaintyStructure = UncertaintyStructureModule.get_uncertainty_structure(
+													   aNTradingPeriods              = aNTradingPeriods,
+													   aConsiderPriceMoves           = aConsiderPriceMoves[p],
+													   aPricesMovesDistributions     = myPriceMovesDistributions,
+													   aConsiderForecastUpdates      = aConsiderForecastUpdates[p],
+													   aInitialDemandForecast        = aInitialDemandForecasts[p],
+													   aForecastUpdatesDistributions = myForecastDistributions
+													   )
+
+		myTradersUncertaintyStructure[p] = myMarketDetailsUncertaintyStructure
+	end
+
+	# market details belief of player `myTraderIndex`; we assume that the market parameters τ, γ, ϵ and η are the same for all players.
+	myMarketDetailsBelief = MarketDetailsModule.get_market_details(
+								       aNTradingPeriods              = aNTradingPeriods,
+								       aNTraders                     = aNTraders,
+								       aTaus                         = aTaus,
+								       aEpsilons                     = aEpsilons,
+								       aEtas                         = aEtas,
+								       aGammas                       = aGammas,
+								       aTradersUncertaintyStructure  = myTradersUncertaintyStructure,
+								       )
+
+	return myMarketDetailsBelief
+end
+
+function get_initial_strategies(;
+				aTraders,
+				aSimulationParameters,
+				aNTradingPeriods,
+				aRandomInitialStrategy::Bool = true,
+				aSeed = -1
+				)
+
+	# fixes the seed; this will be done only if a value is given to `aSeed`
+	if aSeed != -1
+		Random.seed!(aSeed)
+	end
+
+	# gets the number of players
+	myNTraders = size(aTraders,1)
+
+	# initialises the array containing the initial strategies
+	myInitialStrategies = Array{Strategy}(undef,myNTraders)
+
+	# checks wether the initial strategy should be random
+	if !(aRandomInitialStrategy)
+		# computes the optimal strategies of each trader as if they were alone which defines their initial optimal strategy
+		for p in eachindex(aTraders)
+
+			# computes the optimal strategies
+			myOptimalStrategy, myOptimalValueFunction = OptimalStrategyModule.compute_optimal_strategy(
+														   aTraderIndex          = 1,
+														   aTraders              = [aTraders[p]],
+														   aStrategies           = [get_default_initial_strategy(aNTradingPeriods)],
+														   aSimulationParameters = aSimulationParameters,
+														   )
+
+			myInitialStrategies[p] = myOptimalStrategy
+		end
+	else
+		for p in eachindex(myInitialStrategies)
+			myRandomTradingPlan = rand(aNTradingPeriods).-0.5
+			myRandomTradingPlan[end] = 1-sum(myRandomTradingPlan[1:end-1])
+			myRandomStrategy = get_strategy(
+							aNTradingPeriods = aNTradingPeriods,
+							aTradingPlan     = myRandomTradingPlan
+							)
+			myInitialStrategies[p] = myRandomStrategy
+		end
+	end
+
+	myInitialStrategies
+end
+
+end
