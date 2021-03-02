@@ -1,1 +1,1 @@
-# trading_uncertain_volume
+A Julia code for calculating the optimal execution strategy of a risk-averse trader subject to an uncertain volume target. The code is associated with the paper [Optimal execution strategy with an uncertain volume target](https://arxiv.org/abs/1810.11454).
