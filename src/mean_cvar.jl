@@ -403,8 +403,7 @@ function get_objective_function_value_and_gradient(;
 	myAlpha = get_alpha(myTrader)
 
 	# gets the estimates of the expectation and CVaR of the trading cost
-	println("================== New timing ==================")
-	@time myDictDetails = get_mean_cvar_rockafellar_value_and_partial_derivatives(
+	myDictDetails = get_mean_cvar_rockafellar_value_and_partial_derivatives(
 										      aTraders              = aTraders,
 										      aTraderIndex          = aTraderIndex,
 										      aStrategies           = aStrategies,

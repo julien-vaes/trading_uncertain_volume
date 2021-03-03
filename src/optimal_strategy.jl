@@ -20,7 +20,7 @@ using ..SimulationParametersModule
 using ..TradingCostModule
 using ..MeanVarianceModule
 using ..MeanCVaRModule
-using ..MeanVaRPrincipalScenariosModule
+#= using ..MeanVaRPrincipalScenariosModule =#
 using ..HelpFilesModule
 
 ######################
@@ -38,7 +38,7 @@ ourFunctionsImplemented = Dict(
 			       "Mean-Variance"    => MeanVarianceModule.get_optimal_strategy_mean_variance,
 			       "Mean-CVaR_Optim"  => MeanCVaRModule.get_optimal_strategy_mean_CVaR_Optim,
 			       "Mean-CVaR_Gurobi" => MeanCVaRModule.get_optimal_strategy_mean_CVaR_Gurobi,
-			       "Mean-VaR"         => MeanVaRPrincipalScenariosModule.get_optimal_strategy_mean_VaR
+			       #= "Mean-VaR"         => MeanVaRPrincipalScenariosModule.get_optimal_strategy_mean_VaR =#
 			       )
 
 ######################

@@ -1,7 +1,7 @@
 # NAME: help_files.jl
 # AUTHOR: Julien Vaes
 # DATE: May 23, 2019
-# DESCRIPTION: module with function helpful to the storage of the results and the gestion of files
+# DESCRIPTION: module with functions helpful to the storage of the results and the management of files
 
 module HelpFilesModule
 
@@ -47,25 +47,28 @@ export get_value_with_n_significant_number
 """
 create_relevant_folders!(aPath::String)
 
-creates the folders needed so that the path `aPath` exits.
+creates the folders needed so that the path `aPath` exists.
 
 #### Argument
-* `aPath::String`: the path of a folder or a file.
+* `aPath::String`: a path to the file.
 """
 function create_relevant_folders!(aPath::String)
-	# splite the file path and name with the extension
+
+	# removes the extension (e.g. .eps .txt) of the file from the path
 	myFilePathSplitted = split(aPath,".")
-	myFolderPathandName = myFilePathSplitted[1]
-	myFolderPathSplitted = split(myFolderPathandName,"/")
+	myFilePath = myFilePathSplitted[1]
 
-	# check wether the path of the file goes to a subfolder 
-	if length(myFolderPathSplitted) != 1
+	# splits the path in the relevant folders
+	myFoldersPath = split(myFilePath,"/")
 
-		# deletes the file name
-		myFolderPathSplitted = myFolderPathSplitted[1:end-1]
+	# check whether the path of the file enters a subfolder 
+	if length(myFoldersPath) != 1
+
+		# deletes the file name and keeps only the subfolders path
+		myFoldersPath = myFoldersPath[1:end-1]
 
 		myIterativeFolderPath = ""
-		for myNewSubFolder in myFolderPathSplitted
+		for myNewSubFolder in myFoldersPath
 			if myNewSubFolder != ""
 				myIterativeFolderPath = string(myIterativeFolderPath,myNewSubFolder,"/")
 
