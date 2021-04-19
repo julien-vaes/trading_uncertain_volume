@@ -26,10 +26,24 @@ using ..UncertaintyStructureModule
 export MarketDetails
 export get_n_trading_periods, get_n_traders
 export get_taus, get_epsilons, get_etas, get_gammas, get_traders_uncertainty_structure
+export get_cost_estimate_method
 export get_market_details, get_new_market_details
 export get_dict_from_market_details
 export get_M_matrix_quadratic_part_trading_cost
+export get_satisfy_sufficient_condition_for_uniqueness
 export hash_market_details, hash_partial_market_details
+
+######################
+## Module variables ##
+######################
+
+# the different methods to estimate the trading cost
+ourCostEstimateMethods = [
+			  "All",         # the global trading cost:                                                                          ∑i ni * ( S0 + ∑k=1^i-1 ξk + γk nk ) +  Σi (ηi/τi) ni^2,             with ∑i ni = DT
+			  "All - S0*D0", # the global trading cost minus the fixed cost S0 * D0:                                             ∑i ni * ( S0 + ∑k=1^i-1 ξk + γk nk ) +  Σi (ηi/τi) ni^2 - S0 * D0,   with ∑i ni = DT
+			  "All - S0*DT", # the global trading cost minus the cost related to the initial price and the final demand S0 * DT: ∑i ni * ( S0 + ∑k=1^i-1 ξk + γk nk ) +  Σi (ηi/τi) ni^2 - S0 * DT,   with ∑i ni = DT
+			  "All - [ S0*D0 + ∑i δi * ( S0 + ∑k=1^i-1 (ξk + γk nk) ) ]" # the global trading cost minus the cost related to the initial price and the cost due to the volume updates given the price at the start of the trading period where there is the update: ∑i (ni - δi) * ( S0 + ∑k=1^i-1 ξk + γk nk ) +  Σi (ηi/τi) ni^2 - S0 * DT,   with ∑i ni = DT (this is used to compare with the dynamic program version)
+			  ]
 
 ######################
 ## Module functions ##
@@ -38,7 +52,7 @@ export hash_market_details, hash_partial_market_details
 ### START: STRUCTURE MarketDetails ###
 
 # A structure containing all details for a structurename.
-# The attributes in the structure: theNTradingPeriods, theNTraders, theTaus, theEpsilons, theEtas, theGammas, theTradersUncertaintyStructure
+# The attributes in the structure: theNTradingPeriods, theNTraders, theTaus, theGammas, theEpsilons, theEtas, theCostEstimateMethod, theTradersUncertaintyStructure
 struct MarketDetails 
 	theNTradingPeriods                                             # the number of trading periods
 	theNTraders                                                    # the number of traders
@@ -46,6 +60,7 @@ struct MarketDetails
 	theGammas                                                      # an array with the value of the linear permanent impact parameter for each trading period.
 	theEpsilons 	                                               # an array with the value of the fixed temporary impact parameter ϵ for each trading period, i.e. half the bid-ask spread + fixed trading cost for each trading period.
 	theEtas 	                                               # an array with the value of the linear temporary impact parameter η for each trading period.
+	theCostEstimateMethod 	                                       # the method to use to estimat the trading cost. The options are "All", "All - S0*D0", "All - S0*DT", or "All - [ S0*D0 + ∑i δi * ( S0 + ∑k=1^i-1 (ξk + γk nk) ) ]".
 	theTradersUncertaintyStructure::Array{UncertaintyStructure,1}  # the structure containing the details on the uncertainty structure of each trader.
 end
 
@@ -94,6 +109,20 @@ end
 
 """
 ```
+get_gammas(aMarketDetails::MarketDetails)
+```
+
+returns the attribute `theGammas` of the structure `aMarketDetails`.
+
+### Argument
+* `aMarketDetails::MarketDetails`: TODO.
+"""
+function get_gammas(aMarketDetails::MarketDetails)
+	return aMarketDetails.theGammas
+end
+
+"""
+```
 get_epsilons(aMarketDetails::MarketDetails)
 ```
 
@@ -122,16 +151,16 @@ end
 
 """
 ```
-get_gammas(aMarketDetails::MarketDetails)
+get_cost_estimate_method(aMarketDetails::MarketDetails)
 ```
 
-returns the attribute `theGammas` of the structure `aMarketDetails`.
+returns the attribute `theCostEstimateMethod` of the structure `aMarketDetails`.
 
 ### Argument
 * `aMarketDetails::MarketDetails`: TODO.
 """
-function get_gammas(aMarketDetails::MarketDetails)
-	return aMarketDetails.theGammas
+function get_cost_estimate_method(aMarketDetails::MarketDetails)
+	return aMarketDetails.theCostEstimateMethod
 end
 
 """
@@ -178,6 +207,7 @@ function get_market_details(;
 			    aEpsilons::Array{Float64,1}=Array{Float64,1}(),
 			    aEtas::Array{Float64,1}=Array{Float64,1}(),
 			    aGammas::Array{Float64,1}=Array{Float64,1}(),
+			    aCostEstimateMethod::String = "All - S0*DT",
 			    aTradersUncertaintyStructure::Array{UncertaintyStructure,1}=[UncertaintyStructureModule.get_uncertainty_structure()]
 			    )
 
@@ -239,6 +269,19 @@ function get_market_details(;
 		       )
 	end
 
+	if !(in(aCostEstimateMethod,ourCostEstimateMethods))
+		@error(string(
+			      "\n MarketDetailsModule 107:\n",
+			      "The method ", aCostEstimateMethod ," to estimate the trading cost in unknown.",
+			      " Please use one of the following methods:\n",
+			      "\t 1) \"All\",\nthe global trading cost, i.e.\n\t\t∑i ni * ( S0 + ∑k ξk + γk nk ) +  Σi (ηi/τi) ni^2, with ∑i ni = DT\n",
+			      "\t 2) \"All - S0*D0\",\nthe global trading cost minus the fixed cost S0 * D0, i.e.\n\t\t∑i ni * ( S0 + ∑k ξk + γk nk ) +  Σi (ηi/τi) ni^2 - S0 * D0, with ∑i ni = DT\n",
+			      "\t 3) \"All - S0*DT\",\nthe global trading cost minus the cost related to the initial price and the final demand S0 * DT, i.e.\n\t\t∑i ni * ( S0 + ∑k ξk + γk nk ) +  Σi (ηi/τi) ni^2 - S0 * DT, with ∑i ni = DT",
+			      "\t 4) \"All - [ S0*D0 + ∑i δi * ( S0 + ∑k=1^i-1 (ξk + γk nk) ) ]\",\nthe global trading cost minus the cost related to the initial price and the cost due to the volume updates given the price at the start of the trading period where there is the update, i.e.\n\t\tS0 * DT: ∑i (ni - δi) * ( S0 + ∑k=1^i-1 ξk + γk nk ) +  Σi (ηi/τi) ni^2 - S0 * DT, with ∑i ni = DT"
+			      )
+		       )
+	end
+
 	# creates the structure
 	return MarketDetails(
 			     aNTradingPeriods,
@@ -247,6 +290,7 @@ function get_market_details(;
 			     aGammas,
 			     aEpsilons,
 			     aEtas,
+			     aCostEstimateMethod,
 			     aTradersUncertaintyStructure
 			     )
 end
@@ -276,6 +320,7 @@ function get_new_market_details(
 				aEpsilons = get_epsilons(aMarketDetails),
 				aEtas = get_etas(aMarketDetails),
 				aGammas = get_gammas(aMarketDetails),
+				aCostEstimateMethod = get_cost_estimate_method(aMarketDetails),
 				aTradersUncertaintyStructure::Array{UncertaintyStructure,1} = get_traders_uncertainty_structure(aMarketDetails)
 				)
 
@@ -286,6 +331,7 @@ function get_new_market_details(
 						aEpsilons                    = aEpsilons,
 						aEtas                        = aEtas,
 						aGammas                      = aGammas,
+						aCostEstimateMethod          = aCostEstimateMethod,
 						aTradersUncertaintyStructure = aTradersUncertaintyStructure
 						)
 
@@ -309,9 +355,10 @@ function get_dict_from_market_details(aMarketDetails::MarketDetails)
 	myDict["NTradingPeriods"]      = MarketDetailsModule.get_n_trading_periods(aMarketDetails)
 	myDict["NTraders"]             = get_n_traders(aMarketDetails)
 	myDict["Taus"]                 = get_taus(aMarketDetails)
+	myDict["Gammas"]               = get_gammas(aMarketDetails)
 	myDict["Epsilons"]             = get_epsilons(aMarketDetails)
 	myDict["Etas"]                 = get_etas(aMarketDetails)
-	myDict["Gammas"]               = get_gammas(aMarketDetails)
+	myDict["CostEstimateMethod"]   = get_cost_estimate_method(aMarketDetails)
 
 	myTradersUncertaintyStructure = get_traders_uncertainty_structure(aMarketDetails)
 	myTradersUncertaintyStructureDict = Array{Dict,1}(undef,get_n_traders(aMarketDetails))
@@ -353,6 +400,10 @@ function get_M_matrix_quadratic_part_trading_cost(aMarketDetails::MarketDetails)
 	end
 
 	return myMatrixM
+end
+
+function get_satisfy_sufficient_condition_for_uniqueness(aMarketDetails::MarketDetails)
+	return isposdef(get_M_matrix_quadratic_part_trading_cost(aMarketDetails))
 end
 
 """

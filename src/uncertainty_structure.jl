@@ -25,7 +25,7 @@ using ..SimulationParametersModule
 export UncertaintyStructure
 
 export get_n_trading_periods
-export get_consider_price_moves, get_consider_forecast_updates
+export get_consider_price_moves, get_initial_price, get_consider_forecast_updates
 export get_initial_demand_forecast
 export get_prices_moves_distributions, get_forecast_updates_distributions
 export get_scenario_approximation, get_prob_extreme_in_rays
@@ -44,10 +44,11 @@ export generate_uncertainty_realisations!
 ### START: STRUCTURE UncertaintyStructure ###
 
 # A structure containing all details for a structurename.
-# The attributes in the structure: theNTradingPeriods, theConsiderPriceMoves, thePricesMovesDistributions, theConsiderForecastUpdates, theInitialDemandForecast, theForecastUpdatesDistributions, theScenarioApproximation, theProbExtremeInRays, theExtremeRays, theNExtremeRays, theRaysProbabilities, theDistEstimateAlongRays, theBlackBoxFunctionGeneratingUncertainty
+# The attributes in the structure: theNTradingPeriods, theConsiderPriceMoves, theInitialPrice, thePricesMovesDistributions, theConsiderForecastUpdates, theInitialDemandForecast, theForecastUpdatesDistributions, theScenarioApproximation, theProbExtremeInRays, theExtremeRays, theNExtremeRays, theRaysProbabilities, theDistEstimateAlongRays, theBlackBoxFunctionGeneratingUncertainty
 struct UncertaintyStructure 
 	theNTradingPeriods 	                  # TODO.
 	theConsiderPriceMoves::Bool               # TODO.
+	theInitialPrice::Float64                  # the initial price, i.e. S0.
 	thePricesMovesDistributions 	          # TODO.
 	theConsiderForecastUpdates::Bool          # TODO.
 	theInitialDemandForecast::Float64         # the initial demand, i.e. D0.
@@ -88,6 +89,20 @@ returns the attribute `theConsiderPriceMoves` of the structure `aUncertaintyStru
 """
 function get_consider_price_moves(aUncertaintyStructure::UncertaintyStructure)
 	return aUncertaintyStructure.theConsiderPriceMoves
+end
+
+"""
+```
+get_initial_price(aUncertaintyStructure::UncertaintyStructure)
+```
+
+returns the attribute `theInitialPrice` of the structure `aUncertaintyStructure`.
+
+### Argument
+* `aUncertaintyStructure::UncertaintyStructure`: TODO.
+"""
+function get_initial_price(aUncertaintyStructure::UncertaintyStructure)
+	return aUncertaintyStructure.theInitialPrice
 end
 
 """
@@ -249,6 +264,7 @@ end
 function get_uncertainty_structure(;
 				   aNTradingPeriods::Int=-1,
 				   aConsiderPriceMoves::Bool=true,
+				   aInitialPrice::Float64=0.0,
 				   aPricesMovesDistributions=[],
 				   aConsiderForecastUpdates::Bool=true,
 				   aInitialDemandForecast::Float64=-1.0,
@@ -297,6 +313,7 @@ function get_uncertainty_structure(;
 	return UncertaintyStructure(
 				    aNTradingPeriods,
 				    aConsiderPriceMoves,
+				    aInitialPrice,
 				    myPricesMovesDistributions,
 				    aConsiderForecastUpdates,
 				    aInitialDemandForecast,
@@ -323,6 +340,7 @@ function get_new_uncertainty_structure(
 				       aUncertaintyStructure;
 				       aNTradingPeriods::Int=get_n_trading_periods(aUncertaintyStructure),
 				       aConsiderPriceMoves::Bool=get_consider_price_moves(aUncertaintyStructure),
+				       aInitialPrice::Float64=get_initial_price(aUncertaintyStructure),
 				       aPricesMovesDistributions=get_prices_moves_distributions(aUncertaintyStructure),
 				       aConsiderForecastUpdates::Bool=get_consider_forecast_updates(aUncertaintyStructure),
 				       aInitialDemandForecast::Float64=get_initial_demand_forecast(aUncertaintyStructure),
@@ -339,6 +357,7 @@ function get_new_uncertainty_structure(
 	return UncertaintyStructure(
 				    aNTradingPeriods,
 				    aConsiderPriceMoves,
+				    aInitialPrice,
 				    aPricesMovesDistributions,
 				    aConsiderForecastUpdates,
 				    aInitialDemandForecast,
@@ -376,6 +395,7 @@ function get_uncertainty_structure_from_dict(aDict::Dict)
 	return UncertaintyStructure(
 				    aDict["NTradingPeriods"],
 				    aDict["ConsiderPriceMoves"],
+				    aDict["InitialPrice"],
 				    aDict["PricesMovesDistributions"],
 				    aDict["ConsiderForecastUpdates"],
 				    aDict["InitialDemandForecast"],
@@ -402,6 +422,7 @@ function get_dict_from_uncertainty_structure(aUncertaintyStructure::UncertaintyS
 	myDict = Dict()
 	myDict["TradingPeriods"]                        = get_n_trading_periods(aUncertaintyStructure)
 	myDict["ConsiderPriceMoves"]                    = get_consider_price_moves(aUncertaintyStructure) ? 1 : 0
+	myDict["InitialPrice"]                          = get_initial_price(aUncertaintyStructure)
 	myDict["PricesMovesDistributions"]              = get_prices_moves_distributions(aUncertaintyStructure)
 	myDict["ConsiderForecastUpdates"]               = get_consider_forecast_updates(aUncertaintyStructure) ? 1 : 0
 	myDict["InitialDemandForecast"]                 = get_initial_demand_forecast(aUncertaintyStructure)

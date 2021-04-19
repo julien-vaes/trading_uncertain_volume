@@ -207,7 +207,7 @@ function generate_optimal_strategies_plot(
 				 ytickfont = font(8),
 				 legendfont = font(12),
 				 xaxis = ("Trading period", font(14)),
-				 yaxis = ("Proportion of the forecasted demand to trade", font(13)),
+				 yaxis = ("Proportion to trade", font(13)),
 				 )
 
 	if aControlYAxis
@@ -305,7 +305,7 @@ function generate_difference_optimal_strategies_plot(
 				 ytickfont      = font(8),
 				 legendfont     = font(12),
 				 xaxis          = ("Trading period", font(14)),
-				 yaxis          = ("Proportion of the forecasted demand to trade", font(13)),
+				 yaxis          = ("Proportion to trade", font(13)),
 				 legend         = aLegendPosition
 				 )
 
@@ -566,7 +566,7 @@ function plot_comparison_pdf_or_cdf_methods!(;
 
 		# sets the title
 		myRiskAversion = aRiskAversions[i]
-		title!(myPlot[i],string("Risk-aversion: \$\\lambda = {$myRiskAversion} \$ "),fontsize=:6)
+		title!(myPlot[i],string("\$\\lambda_{CVaR} = {$myRiskAversion} \$ "),fontsize=:6)
 
 		# sets the legend box
 		if all(y -> isnothing(y), aMethodNameLabels)
@@ -898,8 +898,8 @@ function plot_analysis_liquidity_profile(;
 			      markershape = myMarker,
 			      markersize  = myMarkerSize,
 			      xaxis       = ("Trading period", font(10)),
-			      yaxis       = ("Proportion [1]", font(10)),
-			      label       = "Trading plan under price and volume uncertainty"
+			      yaxis       = ("Proportion to trade", font(10)),
+			      label       = "Mean-CVaR (PVU)"
 			      )  
 
 			# removes the legend on the plot except for the first row
@@ -926,7 +926,7 @@ function plot_analysis_liquidity_profile(;
 			      markershape = myMarker,
 			      markersize  = myMarkerSize,
 			      xaxis     = ("Trading period", font(10)),
-			      yaxis     = ("Proportion [1]", font(10)),
+			      yaxis     = ("Proportion to trade", font(10)),
 			      label     = "Volume uncertainty impact"
 			      )  
 

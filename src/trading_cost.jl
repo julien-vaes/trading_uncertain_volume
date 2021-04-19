@@ -350,7 +350,7 @@ function get_trading_cost_value_and_partial_derivatives_given_realisations(;
 									   aSimulationParameters::SimulationParameters,
 									   aNSamples::Int,
 									   aPriceMovesRealisations::Array{Float64},
-									   aForecastUpdatesRealisations::Array{Array{Float64,2},1}
+									   aForecastUpdatesRealisations::Array{Array{Float64,2},1},
 									   )
 
 	# gets the trader
@@ -368,6 +368,7 @@ function get_trading_cost_value_and_partial_derivatives_given_realisations(;
 	myEtas            = get_etas(myMarketDetailsBelief)
 	myGammas          = get_gammas(myMarketDetailsBelief)
 	myTaus            = get_taus(myMarketDetailsBelief)
+	myInitialPrice    = get_initial_price(myTradersUncertaintyStructure[aTraderIndex])
 	myInitialDemand   = get_initial_demand_forecast(myTradersUncertaintyStructure[aTraderIndex])
 
 	# the sum of the forecast updates over all the periods for trader `aTraderIndex`
@@ -447,7 +448,35 @@ function get_trading_cost_value_and_partial_derivatives_given_realisations(;
 	# vector with the details of each sample:
 	## - first column:      the trading cost 
 	## - kth columns (k>1): the trading cost derivative with regards to investment decision of trading period k-1, i.e. y_{k-1}.
-	myTradingCostRealisations             = zeros(aNSamples)
+	
+	# if aCostEstimateMethod = :  removes the base of the price of S0 * D0 from the trading cost estimate as it is a constant (this facilitate the optimisation), leaves us with S0 * Σ δi, i.e. the additional cost due to the volume updates
+	
+	# gets the method to estimate the trading cost (see MarketDetails module for more details)
+	myCostEstimateMethod = get_cost_estimate_method(myMarketDetailsBelief)
+	
+	# If myCostEstimateMethod = "All", the global trading cost: ∑i ni * ( S0 + ∑k ξk + γk nk ) +  Σi (ηi/τi) ni^2, with ∑i ni = DT
+	# If myCostEstimateMethod = "All - S0*D0", the global trading cost minus the fixed cost S0 * D0: ∑i ni * ( S0 + ∑k ξk + γk nk ) +  Σi (ηi/τi) ni^2 - S0 * D0, with ∑i ni = DT
+	# If myCostEstimateMethod = "All - S0*DT", the global trading cost minus the cost related to the initial price and the final demand S0 * DT: ∑i ni * ( S0 + ∑k ξk + γk nk ) +  Σi (ηi/τi) ni^2 - S0 * DT, with ∑i ni = DT
+	# If myCostEstimateMethod = "All - [ S0*D0 + ∑i δi * ( S0 + ∑k=1^i-1 (ξk + γk nk) ) ]",  the global trading cost minus the cost related to the initial price and the cost due to the volume updates given the price at the start of the trading period where there is the update: ∑i (ni - δi) * ( S0 + ∑k=1^i-1 ξk + γk nk ) +  Σi (ηi/τi) ni^2 - S0 * DT,   with ∑i ni = DT (this is used to compare with the dynamic program version)
+	#
+	# initialises the trading cost depending on the method used to evaluate it
+	myTradingCostRealisations = nothing
+	if myCostEstimateMethod == "All"
+		myTradingCostRealisations =  myInitialPrice .* deepcopy(myFinalDemand)
+	elseif myCostEstimateMethod == "All - S0*D0"
+		myTradingCostRealisations =  myInitialPrice .* ( deepcopy(myFinalDemand) .- myInitialDemand )
+	elseif myCostEstimateMethod == "All - S0*DT"
+		myTradingCostRealisations =  zeros(aNSamples)
+	elseif myCostEstimateMethod == "All - [ S0*D0 + ∑i δi * ( S0 + ∑k=1^i-1 (ξk + γk nk) ) ]"
+		myTradingCostRealisations =  zeros(aNSamples) # it remains now to remove ∑i δi * ( ∑k=1^i-1 (ξk + γk nk) )
+	else
+		@error(string(
+			      "\nTradingCostModule 104:\n",
+			      "The method ",myCostEstimateMethod," to estimate the trading cost in unknown. Please refer you the the MarketDetails Module."
+			      )
+		       )
+	end
+
 	myTradingCostGradientYRealisations    = zeros(aNSamples,myNTradingPeriods-1)
 	myTradingCostGradientBetaRealisations = zeros(aNSamples,Int(0.5*(myNTradingPeriods-1)*(myNTradingPeriods-2)))
 
@@ -468,10 +497,17 @@ function get_trading_cost_value_and_partial_derivatives_given_realisations(;
 		##########################
 		## Part 1: Trading cost ##
 		##########################
+		
+		# if estimate the cost be removing  S0*D0 + ∑i δi * ( S0 + ∑k=1^i-1 (ξk + γk nk) ), one still needs to remove ∑i δi * ( ∑k=1^i-1 (ξk + γk nk) ) = ∑i (ξi + γi ni) * ∑k=i+1^m δk
+		if myCostEstimateMethod == "All - [ S0*D0 + ∑i δi * ( S0 + ∑k=1^i-1 (ξk + γk nk) ) ]"
+			if myPeriod < myNTradingPeriods
+				myTradingCostRealisations -= ( aPriceMovesRealisations[:,myPeriod] + myGammas[myPeriod] * ( myVolumeTraded[:,myPeriod] + myVolumeTradedOtherTraders[:,myPeriod] ) ) * (sum(aForecastUpdatesRealisations[aTraderIndex][:,k] for k=myPeriod+1:myNTradingPeriods))
+			end
+		end
 
 		## Permanent Cost
 
-		# TODO: verigy added the contribution of the other players
+		# TODO: verify added the contribution of the other players
 		myTradingCostRealisations += @views ( ( aPriceMovesRealisations[:,myPeriod] + myGammas[myPeriod] * ( myVolumeTraded[:,myPeriod] + myVolumeTradedOtherTraders[:,myPeriod] ) ) .* myVolumeLeftToTrade )
 
 		## Temporary cost
@@ -482,7 +518,7 @@ function get_trading_cost_value_and_partial_derivatives_given_realisations(;
 		### contribution of (\eta_i/tau_i) ( (Q_{p,i}^+)^2 + (Q_{p,i}^-)^2 ).
 		myTradingCostRealisations += @views (myEtas[myPeriod]/myTaus[myPeriod]) * (myVolumeTraded[:,myPeriod].^2)
 
-		### contribution of the other players, i.e. (\eta_i/tau_i) sum_{ptilde \neq p} (Q_{p,i}^+ Q_{p_tilde,i}^+ + Q_{p,i}^- Q_{p_tilde,i}^-).
+		### contribution of the other players, i.e. (η_i/τ_i) sum_{ptilde \neq p} (Q_{p,i}^+ Q_{p_tilde,i}^+ + Q_{p,i}^- Q_{p_tilde,i}^-).
 		### Equal to 0 if only one trader
 		myTradingCostRealisations += @views (myEtas[myPeriod]/myTaus[myPeriod]) * ( myNegativeVolumeTraded[:,myPeriod] .* myNegativeVolumeTradedOtherTraders[:,myPeriod] + myPositiveVolumeTraded[:,myPeriod] .* myPositiveVolumeTradedOtherTraders[:,myPeriod])
 
@@ -706,7 +742,7 @@ function get_trading_cost_value_and_partial_derivatives(;
 										 aSimulationParameters        = aSimulationParameters,
 										 aNSamples                    = aNSamples,
 										 aPriceMovesRealisations      = myPriceMovesRealisations,
-										 aForecastUpdatesRealisations = myForecastUpdatesRealisations
+										 aForecastUpdatesRealisations = myForecastUpdatesRealisations,
 										 )
 end
 
@@ -819,7 +855,7 @@ function get_trading_cost_value_and_partial_derivatives_statistical_values(;
 																						aSimulationParameters        = aSimulationParameters,
 																						aNSamples                    = 1,
 																						aPriceMovesRealisations      = myPriceMovesRealisations,
-																						aForecastUpdatesRealisations = myForecastUpdatesRealisations
+																						aForecastUpdatesRealisations = myForecastUpdatesRealisations,
 																						)
 
 		# variables to store the sum of the cost
@@ -993,7 +1029,7 @@ TODO function description.
 function get_trading_cost_expectation_and_gradient_Monte_Carlo(;
 							       aStrategy::Strategy,
 							       aTrader::Trader,
-							       aSimulationParameters::SimulationParameters
+							       aSimulationParameters::SimulationParameters,
 							       )
 
 	# Parameters

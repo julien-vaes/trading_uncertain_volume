@@ -117,7 +117,7 @@ function get_optimal_plan_trading_cost_realisations(;
 									    aIncludeTradersHash              = true,
 									    aIncludeStrategiesHash           = true,
 									    aSpecificFileNameExtension       = "_recursive_realisations",
-									    aSpecificFolder                  = "outputs/trading_cost_realisations/"
+									    aSpecificFolder                  = string("outputs/trading_cost_realisations/",get_method(aSimulationParameters),"/")
 									    )
 	else
 
@@ -134,7 +134,7 @@ function get_optimal_plan_trading_cost_realisations(;
 									    aIncludeTradersHash              = false,
 									    aIncludeStrategiesHash           = true,
 									    aSpecificFileNameExtension       = "_realisations",
-									    aSpecificFolder                  = "outputs/trading_cost_realisations/"
+									    aSpecificFolder                  = string("outputs/trading_cost_realisations/",get_method(aSimulationParameters),"/")
 									    )
 	end
 

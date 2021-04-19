@@ -20,7 +20,6 @@ using ..SimulationParametersModule
 using ..TradingCostModule
 using ..MeanVarianceModule
 using ..MeanCVaRModule
-#= using ..MeanVaRPrincipalScenariosModule =#
 using ..HelpFilesModule
 
 ######################
